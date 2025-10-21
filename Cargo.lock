@@ -342,6 +342,7 @@ dependencies = [
  "anchor-lang",
  "mpl-token-metadata",
  "spl-associated-token-account",
+ "spl-memo",
  "spl-pod",
  "spl-token 7.0.0",
  "spl-token-2022 6.0.0",
@@ -2767,9 +2768,9 @@ dependencies = [
 
 [[package]]
 name = "mpl-token-metadata"
-version = "5.1.0"
+version = "5.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "989e6a3000e761d3b2d685662a3a9ee99826f9369fb033bd1bc7011b1cf02ed9"
+checksum = "046f0779684ec348e2759661361c8798d79021707b1392cb49f3b5eb911340ff"
 dependencies = [
  "borsh 0.10.4",
  "num-derive 0.3.3",
@@ -3671,15 +3672,14 @@ dependencies = [
 [[package]]
 name = "raydium-amm-v3"
 version = "0.1.0"
-source = "git+https://github.com/jup-ag/raydium-clmm.git?rev=7567c36c2d116445f4b4c1113ccd6dc86b4a9610#7567c36c2d116445f4b4c1113ccd6dc86b4a9610"
+source = "git+https://github.com/edwinwang/raydium-clmm#d4ec101534724a20e1eb38a9b997f8b391c5100f"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
  "arrayref",
  "bytemuck",
- "solana-program",
  "solana-security-txt",
- "spl-memo",
+ "spl-token-2022 7.0.0",
  "uint",
 ]
 
