@@ -34,7 +34,6 @@ derivative = "2.2.0"
 fixed = { workspace = true, features = [
     "serde",
     "borsh",
-    "debug-assert-in-release",
 ] }
 itertools = "0.10.3"
 num_enum = "0.5.1"
