@@ -1,4 +1,4 @@
-export interface OpenbookV2 {
+export type OpenbookV2 = {
   version: '0.1.0';
   name: 'openbook_v2';
   instructions: [
@@ -316,11 +316,6 @@ export interface OpenbookV2 {
       ];
       accounts: [
         {
-          name: 'payer';
-          isMut: true;
-          isSigner: true;
-        },
-        {
           name: 'owner';
           isMut: false;
           isSigner: true;
@@ -619,6 +614,118 @@ export interface OpenbookV2 {
       ];
       returns: {
         option: 'u128';
+      };
+    },
+    {
+      name: 'placeOrders';
+      docs: ['Place multiple orders'];
+      accounts: [
+        {
+          name: 'signer';
+          isMut: false;
+          isSigner: true;
+        },
+        {
+          name: 'openOrdersAccount';
+          isMut: true;
+          isSigner: false;
+        },
+        {
+          name: 'openOrdersAdmin';
+          isMut: false;
+          isSigner: true;
+          isOptional: true;
+        },
+        {
+          name: 'userQuoteAccount';
+          isMut: true;
+          isSigner: false;
+        },
+        {
+          name: 'userBaseAccount';
+          isMut: true;
+          isSigner: false;
+        },
+        {
+          name: 'market';
+          isMut: true;
+          isSigner: false;
+        },
+        {
+          name: 'bids';
+          isMut: true;
+          isSigner: false;
+        },
+        {
+          name: 'asks';
+          isMut: true;
+          isSigner: false;
+        },
+        {
+          name: 'eventHeap';
+          isMut: true;
+          isSigner: false;
+        },
+        {
+          name: 'marketQuoteVault';
+          isMut: true;
+          isSigner: false;
+        },
+        {
+          name: 'marketBaseVault';
+          isMut: true;
+          isSigner: false;
+        },
+        {
+          name: 'oracleA';
+          isMut: false;
+          isSigner: false;
+          isOptional: true;
+        },
+        {
+          name: 'oracleB';
+          isMut: false;
+          isSigner: false;
+          isOptional: true;
+        },
+        {
+          name: 'tokenProgram';
+          isMut: false;
+          isSigner: false;
+        },
+      ];
+      args: [
+        {
+          name: 'ordersType';
+          type: {
+            defined: 'PlaceOrderType';
+          };
+        },
+        {
+          name: 'bids';
+          type: {
+            vec: {
+              defined: 'PlaceMultipleOrdersArgs';
+            };
+          };
+        },
+        {
+          name: 'asks';
+          type: {
+            vec: {
+              defined: 'PlaceMultipleOrdersArgs';
+            };
+          };
+        },
+        {
+          name: 'limit';
+          type: 'u8';
+        },
+      ];
+      returns: {
+        vec: {
+          option: 'u128';
+        };
       };
     },
     {
@@ -2893,6 +3000,9 @@ export interface OpenbookV2 {
           {
             name: 'PostOnlySlide';
           },
+          {
+            name: 'FillOrKill';
+          },
         ];
       };
     },
@@ -3019,6 +3129,15 @@ export interface OpenbookV2 {
               },
               {
                 name: 'peg_limit';
+                type: 'i64';
+              },
+            ];
+          },
+          {
+            name: 'FillOrKill';
+            fields: [
+              {
+                name: 'price_lots';
                 type: 'i64';
               },
             ];
@@ -3573,8 +3692,13 @@ export interface OpenbookV2 {
       name: 'NonEmptyOpenOrdersPosition';
       msg: 'Cannot close a non-empty open orders account';
     },
+    {
+      code: 6043;
+      name: 'WouldExecutePartially';
+      msg: 'Fill-Or-Kill order would generate a partial execution';
+    },
   ];
-}
+};
 
 export const IDL: OpenbookV2 = {
   version: '0.1.0',
@@ -3894,11 +4018,6 @@ export const IDL: OpenbookV2 = {
       ],
       accounts: [
         {
-          name: 'payer',
-          isMut: true,
-          isSigner: true,
-        },
-        {
           name: 'owner',
           isMut: false,
           isSigner: true,
@@ -4197,6 +4316,118 @@ export const IDL: OpenbookV2 = {
       ],
       returns: {
         option: 'u128',
+      },
+    },
+    {
+      name: 'placeOrders',
+      docs: ['Place multiple orders'],
+      accounts: [
+        {
+          name: 'signer',
+          isMut: false,
+          isSigner: true,
+        },
+        {
+          name: 'openOrdersAccount',
+          isMut: true,
+          isSigner: false,
+        },
+        {
+          name: 'openOrdersAdmin',
+          isMut: false,
+          isSigner: true,
+          isOptional: true,
+        },
+        {
+          name: 'userQuoteAccount',
+          isMut: true,
+          isSigner: false,
+        },
+        {
+          name: 'userBaseAccount',
+          isMut: true,
+          isSigner: false,
+        },
+        {
+          name: 'market',
+          isMut: true,
+          isSigner: false,
+        },
+        {
+          name: 'bids',
+          isMut: true,
+          isSigner: false,
+        },
+        {
+          name: 'asks',
+          isMut: true,
+          isSigner: false,
+        },
+        {
+          name: 'eventHeap',
+          isMut: true,
+          isSigner: false,
+        },
+        {
+          name: 'marketQuoteVault',
+          isMut: true,
+          isSigner: false,
+        },
+        {
+          name: 'marketBaseVault',
+          isMut: true,
+          isSigner: false,
+        },
+        {
+          name: 'oracleA',
+          isMut: false,
+          isSigner: false,
+          isOptional: true,
+        },
+        {
+          name: 'oracleB',
+          isMut: false,
+          isSigner: false,
+          isOptional: true,
+        },
+        {
+          name: 'tokenProgram',
+          isMut: false,
+          isSigner: false,
+        },
+      ],
+      args: [
+        {
+          name: 'ordersType',
+          type: {
+            defined: 'PlaceOrderType',
+          },
+        },
+        {
+          name: 'bids',
+          type: {
+            vec: {
+              defined: 'PlaceMultipleOrdersArgs',
+            },
+          },
+        },
+        {
+          name: 'asks',
+          type: {
+            vec: {
+              defined: 'PlaceMultipleOrdersArgs',
+            },
+          },
+        },
+        {
+          name: 'limit',
+          type: 'u8',
+        },
+      ],
+      returns: {
+        vec: {
+          option: 'u128',
+        },
       },
     },
     {
@@ -6471,6 +6702,9 @@ export const IDL: OpenbookV2 = {
           {
             name: 'PostOnlySlide',
           },
+          {
+            name: 'FillOrKill',
+          },
         ],
       },
     },
@@ -6597,6 +6831,15 @@ export const IDL: OpenbookV2 = {
               },
               {
                 name: 'peg_limit',
+                type: 'i64',
+              },
+            ],
+          },
+          {
+            name: 'FillOrKill',
+            fields: [
+              {
+                name: 'price_lots',
                 type: 'i64',
               },
             ],
@@ -7150,6 +7393,11 @@ export const IDL: OpenbookV2 = {
       code: 6042,
       name: 'NonEmptyOpenOrdersPosition',
       msg: 'Cannot close a non-empty open orders account',
+    },
+    {
+      code: 6043,
+      name: 'WouldExecutePartially',
+      msg: 'Fill-Or-Kill order would generate a partial execution',
     },
   ],
 };

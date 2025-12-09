@@ -8,8 +8,9 @@ use crate::state::*;
 use crate::token_utils::*;
 
 #[allow(clippy::too_many_arguments)]
-pub fn cancel_all_and_place_orders(
-    ctx: Context<CancelAllAndPlaceOrders>,
+pub fn cancel_all_and_place_orders<'c: 'info, 'info>(
+    ctx: Context<'_, '_, 'c, 'info, CancelAllAndPlaceOrders<'info>>,
+    cancel: bool,
     mut orders: Vec<Order>,
     limit: u8,
 ) -> Result<Vec<Option<u128>>> {
@@ -33,13 +34,15 @@ pub fn cancel_all_and_place_orders(
 
     let now_ts: u64 = clock.unix_timestamp.try_into().unwrap();
 
-    let oracle_price = market.oracle_price(
+    let oracle_price_lots = market.oracle_price_lots(
         AccountInfoRef::borrow_some(ctx.accounts.oracle_a.as_ref())?.as_ref(),
         AccountInfoRef::borrow_some(ctx.accounts.oracle_b.as_ref())?.as_ref(),
         clock.slot,
     )?;
 
-    book.cancel_all_orders(&mut open_orders_account, *market, u8::MAX, None)?;
+    if cancel {
+        book.cancel_all_orders(&mut open_orders_account, *market, u8::MAX, None, None)?;
+    }
 
     let mut base_amount = 0_u64;
     let mut quote_amount = 0_u64;
@@ -85,8 +88,9 @@ pub fn cancel_all_and_place_orders(
         } = book.new_order(
             order,
             &mut market,
+            &ctx.accounts.market.key(),
             &mut event_heap,
-            oracle_price,
+            oracle_price_lots,
             Some(&mut open_orders_account),
             &open_orders_account_pk,
             now_ts,

@@ -13,7 +13,8 @@ use super::{orderbook, OracleConfig};
 
 // For a 1bps taker fee, set taker_fee to 100, so taker_fee/FEES_SCALE_FACTOR = 10e-4
 pub const FEES_SCALE_FACTOR: i128 = 1_000_000;
-pub const PENALTY_EVENT_HEAP: u64 = 0;
+// taker pays 500 lamports penalty for every transaction that adds to the event heap
+pub const PENALTY_EVENT_HEAP: u64 = 500;
 
 #[account(zero_copy(unsafe))]
 #[derive(Debug)]
@@ -190,6 +191,19 @@ impl Market {
             .and_then(|x| x.checked_div(I80F48::from_num(self.quote_lot_size)))
             .and_then(|x| x.checked_to_num())
             .ok_or_else(|| OpenBookError::InvalidOraclePrice.into())
+    }
+
+    pub fn oracle_price_lots(
+        &self,
+        oracle_a_acc: Option<&impl KeyedAccountReader>,
+        oracle_b_acc: Option<&impl KeyedAccountReader>,
+        slot: u64,
+    ) -> Result<Option<i64>> {
+        let oracle_price = self.oracle_price(oracle_a_acc, oracle_b_acc, slot)?;
+        match oracle_price {
+            Some(p) => Ok(Some(self.native_price_to_lot(p)?)),
+            None => Ok(None),
+        }
     }
 
     pub fn oracle_price(

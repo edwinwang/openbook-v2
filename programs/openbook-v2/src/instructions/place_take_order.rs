@@ -7,7 +7,11 @@ use crate::state::*;
 use crate::token_utils::*;
 
 #[allow(clippy::too_many_arguments)]
-pub fn place_take_order(ctx: Context<PlaceTakeOrder>, order: Order, limit: u8) -> Result<()> {
+pub fn place_take_order<'c: 'info, 'info>(
+    ctx: Context<'_, '_, 'c, 'info, PlaceTakeOrder<'info>>,
+    order: Order,
+    limit: u8,
+) -> Result<()> {
     require_gte!(order.max_base_lots, 0, OpenBookError::InvalidInputLots);
     require_gte!(
         order.max_quote_lots_including_fees,
@@ -33,7 +37,7 @@ pub fn place_take_order(ctx: Context<PlaceTakeOrder>, order: Order, limit: u8) -
 
     let now_ts: u64 = clock.unix_timestamp.try_into().unwrap();
 
-    let oracle_price = market.oracle_price(
+    let oracle_price_lots = market.oracle_price_lots(
         AccountInfoRef::borrow_some(ctx.accounts.oracle_a.as_ref())?.as_ref(),
         AccountInfoRef::borrow_some(ctx.accounts.oracle_b.as_ref())?.as_ref(),
         clock.slot,
@@ -50,8 +54,9 @@ pub fn place_take_order(ctx: Context<PlaceTakeOrder>, order: Order, limit: u8) -
     } = book.new_order(
         &order,
         &mut market,
+        &ctx.accounts.market.key(),
         &mut event_heap,
-        oracle_price,
+        oracle_price_lots,
         None,
         &ctx.accounts.signer.key(),
         now_ts,

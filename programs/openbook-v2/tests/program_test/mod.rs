@@ -126,11 +126,19 @@ impl TestContextBuilder {
             capture: LOGGER_CAPTURE.clone(),
         }));
 
-        let mut test = ProgramTest::new(
-            "openbook_v2",
-            openbook_v2::id(),
-            processor!(openbook_v2::entry),
-        );
+        // hack to fix https://github.com/coral-xyz/anchor/issues/2738
+        pub fn fixed_entry(
+            program_id: &Pubkey,
+            accounts: &[anchor_lang::prelude::AccountInfo],
+            data: &[u8],
+        ) -> anchor_lang::solana_program::entrypoint::ProgramResult {
+            let extended_lifetime_accs = unsafe {
+                core::mem::transmute::<_, &[anchor_lang::prelude::AccountInfo<'_>]>(accounts)
+            };
+            openbook_v2::entry(program_id, extended_lifetime_accs, data)
+        }
+
+        let mut test = ProgramTest::new("openbook_v2", openbook_v2::id(), processor!(fixed_entry));
 
         // intentionally set to as tight as possible, to catch potential problems early
         test.set_compute_max_units(130000);
@@ -281,6 +289,7 @@ pub struct TestNewMarketInitialize {
     pub consume_events_admin_bool: bool,
     pub time_expiry: i64,
     pub with_oracle: bool,
+    pub payer_as_delegate: bool,
 }
 
 impl Default for TestNewMarketInitialize {
@@ -296,6 +305,7 @@ impl Default for TestNewMarketInitialize {
             consume_events_admin_bool: false,
             time_expiry: 0,
             with_oracle: true,
+            payer_as_delegate: false,
         }
     }
 }
@@ -380,10 +390,18 @@ impl TestContext {
 
         let _indexer = create_open_orders_indexer(solana, &context.users[1], owner, market).await;
 
+        let delegate_opt = if args.payer_as_delegate {
+            Some(payer.pubkey())
+        } else {
+            None
+        };
+
         let account_1 =
-            create_open_orders_account(solana, owner, market, 1, &context.users[1], None).await;
+            create_open_orders_account(solana, owner, market, 1, &context.users[1], delegate_opt)
+                .await;
         let account_2 =
-            create_open_orders_account(solana, owner, market, 2, &context.users[1], None).await;
+            create_open_orders_account(solana, owner, market, 2, &context.users[1], delegate_opt)
+                .await;
 
         let price_lots = {
             let market = solana.get_account::<Market>(market).await;

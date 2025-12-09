@@ -9,20 +9,21 @@ import {
   TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 
-export const Side = {
+export const SideUtils = {
   Bid: { bid: {} },
   Ask: { ask: {} },
 };
 
-export const OrderType = {
+export const PlaceOrderTypeUtils = {
   Limit: { limit: {} },
   ImmediateOrCancel: { immediateOrCancel: {} },
+  FillOrKill: { fillOrKill: {} },
   PostOnly: { postOnly: {} },
   Market: { market: {} },
   PostOnlySlide: { postOnlySlide: {} },
 };
 
-export const SelfTradeBehavior = {
+export const SelfTradeBehaviorUtils = {
   DecrementTake: { decrementTake: {} },
   CancelProvide: { cancelProvide: {} },
   AbortTransaction: { abortTransaction: {} },
@@ -33,6 +34,7 @@ export const SelfTradeBehavior = {
 ///
 export const U64_MAX_BN = new BN('18446744073709551615');
 export const I64_MAX_BN = new BN('9223372036854775807').toTwos(64);
+export const ORDER_FEE_UNIT: BN = new BN(1e6);
 
 export function bpsToDecimal(bps: number): number {
   return bps / 10000;
@@ -48,12 +50,6 @@ export function toNative(uiAmount: number, decimals: number): BN {
 
 export function toUiDecimals(nativeAmount: number, decimals: number): number {
   return nativeAmount / Math.pow(10, decimals);
-}
-
-export const QUOTE_DECIMALS = 6;
-
-export function toUiDecimalsForQuote(nativeAmount: number): number {
-  return toUiDecimals(nativeAmount, QUOTE_DECIMALS);
 }
 
 ///
@@ -113,4 +109,8 @@ export async function createAssociatedTokenAccountIdempotentInstruction(
     programId: ASSOCIATED_TOKEN_PROGRAM_ID,
     data: Buffer.from([0x1]),
   });
+}
+
+export function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

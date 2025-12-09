@@ -1,11 +1,12 @@
 [workspace]
-members = ["lib/sdk", "programs/*"]
+members = ["lib/sdk", "lib/client", "programs/*"]
 
 resolver = "2"
 
 [workspace.dependencies]
 anchor-lang = "0.31.1"
 anchor-spl = "0.31.1"
+anchor-client = "0.29.0"
 fixed = "1.29.0"
 pyth-sdk-solana = "0.10"
 solana-account-decoder = ">=2.1"

@@ -1,4 +1,4 @@
-use crate::accounts_ix::CancelOrder;
+use crate::accounts_ix::{CancelOrder, CancelOrderBumps};
 use crate::error::OpenBookError;
 use crate::pubkey_option::NonZeroKey;
 use crate::state::*;
@@ -40,6 +40,7 @@ pub struct PlaceOrder<'info> {
     pub event_heap: AccountLoader<'info, EventHeap>,
     #[account(
         mut,
+        // The side of the vault is checked inside the ix
         constraint = market.load()?.is_market_vault(market_vault.key())
     )]
     pub market_vault: Account<'info, TokenAccount>,
@@ -61,5 +62,11 @@ impl<'info> PlaceOrder<'info> {
             open_orders_account: self.open_orders_account.clone(),
             market: self.market.clone(),
         }
+    }
+}
+
+impl PlaceOrderBumps {
+    pub fn to_cancel_order(&self) -> CancelOrderBumps {
+        CancelOrderBumps {}
     }
 }

@@ -29,11 +29,13 @@ import {
 } from '@solana/web3.js';
 import { IDL, type OpenbookV2 } from './openbook_v2';
 import { sendTransaction } from './utils/rpc';
-import { Side } from './utils/utils';
+import { SideUtils } from './utils/utils';
 
 export type IdsSource = 'api' | 'static' | 'get-program-accounts';
 export type PlaceOrderArgs = IdlTypes<OpenbookV2>['PlaceOrderArgs'];
 export type PlaceOrderType = IdlTypes<OpenbookV2>['PlaceOrderType'];
+export type Side = IdlTypes<OpenbookV2>['Side'];
+export type SelfTradeBehavior = IdlTypes<OpenbookV2>['SelfTradeBehavior'];
 export type PlaceOrderPeggedArgs = IdlTypes<OpenbookV2>['PlaceOrderPeggedArgs'];
 export type PlaceMultipleOrdersArgs =
   IdlTypes<OpenbookV2>['PlaceMultipleOrdersArgs'];
@@ -44,17 +46,21 @@ export type OpenOrdersAccount = IdlAccounts<OpenbookV2>['openOrdersAccount'];
 export type OpenOrdersIndexerAccount =
   IdlAccounts<OpenbookV2>['openOrdersIndexer'];
 export type EventHeapAccount = IdlAccounts<OpenbookV2>['eventHeap'];
-export type BookSideAccount = IdlAccounts<OpenbookV2>['bookSide'];
-export type LeafNode = IdlTypes<OpenbookV2>['LeafNode'];
-export type AnyNode = IdlTypes<OpenbookV2>['AnyNode'];
+export type AnyEvent = IdlTypes<OpenbookV2>['AnyEvent'];
 export type FillEvent = IdlTypes<OpenbookV2>['FillEvent'];
 export type OutEvent = IdlTypes<OpenbookV2>['OutEvent'];
+export type BookSideAccount = IdlAccounts<OpenbookV2>['bookSide'];
+export type AnyNode = IdlTypes<OpenbookV2>['AnyNode'];
+export type InnerNode = IdlTypes<OpenbookV2>['InnerNode'];
+export type LeafNode = IdlTypes<OpenbookV2>['LeafNode'];
+export type OpenOrder = IdlTypes<OpenbookV2>['OpenOrder'];
 
 export interface OpenBookClientOptions {
   idsSource?: IdsSource;
   postSendTxCallback?: ({ txid }: { txid: string }) => void;
   prioritizationFee?: number;
   txConfirmationCommitment?: Commitment;
+  referrerWallet?: PublicKey;
 }
 
 export function nameToString(name: number[]): string {
@@ -70,6 +76,7 @@ export const OPENBOOK_PROGRAM_ID = new PublicKey(
 
 export class OpenBookV2Client {
   public program: Program<OpenbookV2>;
+  public referrerWallet: PublicKey | undefined;
 
   private readonly idsSource: IdsSource;
   private readonly postSendTxCallback?: ({ txid }) => void;
@@ -91,6 +98,7 @@ export class OpenBookV2Client {
         ? (this.program.provider as AnchorProvider).opts.commitment
         : undefined) ??
       'processed';
+    this.referrerWallet = opts.referrerWallet;
     // TODO: evil side effect, but limited backtraces are a nightmare
     Error.stackTraceLimit = 1000;
   }
@@ -170,17 +178,6 @@ export class OpenBookV2Client {
     return [ix, address];
   }
 
-  // Get the MarketAccount from the market publicKey
-  public async deserializeMarketAccount(
-    publicKey: PublicKey,
-  ): Promise<MarketAccount | null> {
-    try {
-      return await this.program.account.market.fetch(publicKey);
-    } catch {
-      return null;
-    }
-  }
-
   public async deserializeOpenOrderAccount(
     publicKey: PublicKey,
   ): Promise<OpenOrdersAccount | null> {
@@ -209,37 +206,6 @@ export class OpenBookV2Client {
     } catch {
       return null;
     }
-  }
-
-  public async deserializeBookSide(
-    publicKey: PublicKey,
-  ): Promise<BookSideAccount | null> {
-    try {
-      return await this.program.account.bookSide.fetch(publicKey);
-    } catch {
-      return null;
-    }
-  }
-
-  public priceData(key: BN): number {
-    const shiftedValue = key.shrn(64); // Shift right by 64 bits
-    return shiftedValue.toNumber(); // Convert BN to a regular number
-  }
-
-  // Get bids or asks from a bookside account
-  public getLeafNodes(bookside: BookSideAccount): LeafNode[] {
-    const leafNodesData = bookside.nodes.nodes.filter(
-      (x: AnyNode) => x.tag === 2,
-    );
-    const leafNodes: LeafNode[] = [];
-    for (const x of leafNodesData) {
-      const leafNode: LeafNode = this.program.coder.types.decode(
-        'LeafNode',
-        Buffer.from([0, ...x.data]),
-      );
-      leafNodes.push(leafNode);
-    }
-    return leafNodes;
   }
 
   public async createMarketIx(
@@ -465,24 +431,22 @@ export class OpenBookV2Client {
     const ixs: TransactionInstruction[] = [];
     let accountIndex = new BN(1);
 
-    if (openOrdersIndexer == null) {
+    if (openOrdersIndexer == null)
       openOrdersIndexer = this.findOpenOrdersIndexer(owner);
-      try {
-        const storedIndexer = await this.deserializeOpenOrdersIndexerAccount(
-          openOrdersIndexer,
-        );
-        if (storedIndexer == null) {
-          ixs.push(
-            await this.createOpenOrdersIndexerIx(openOrdersIndexer, owner),
-          );
-        } else {
-          accountIndex = new BN(storedIndexer.createdCounter + 1);
-        }
-      } catch {
+
+    try {
+      const storedIndexer = await this.deserializeOpenOrdersIndexerAccount(
+        openOrdersIndexer,
+      );
+      if (storedIndexer == null) {
         ixs.push(
           await this.createOpenOrdersIndexerIx(openOrdersIndexer, owner),
         );
+      } else {
+        accountIndex = new BN(storedIndexer.createdCounter + 1);
       }
+    } catch {
+      ixs.push(await this.createOpenOrdersIndexerIx(openOrdersIndexer, owner));
     }
 
     const openOrdersAccount = this.findOpenOrderAtIndex(owner, accountIndex);
@@ -604,7 +568,7 @@ export class OpenBookV2Client {
         userBaseAccount,
         userQuoteAccount,
         marketBaseVault: market.marketBaseVault,
-        marketQuoteVault: market.marketBaseVault,
+        marketQuoteVault: market.marketQuoteVault,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
       .instruction();
@@ -613,7 +577,7 @@ export class OpenBookV2Client {
   }
 
   public decodeMarket(data: Buffer): any {
-    return this.program.coder.accounts.decode('Market', data);
+    return this.program.coder.accounts.decode('market', data);
   }
 
   public async placeOrderIx(
@@ -621,26 +585,27 @@ export class OpenBookV2Client {
     marketPublicKey: PublicKey,
     market: MarketAccount,
     userTokenAccount: PublicKey,
-    openOrdersAdmin: PublicKey | null,
     args: PlaceOrderArgs,
     remainingAccounts: PublicKey[],
     openOrdersDelegate?: Keypair,
   ): Promise<[TransactionInstruction, Signer[]]> {
-    const marketVault =
-      args.side === Side.Bid ? market.marketQuoteVault : market.marketBaseVault;
+    const marketVault = args.side.bid
+      ? market.marketQuoteVault
+      : market.marketBaseVault;
     const accountsMeta: AccountMeta[] = remainingAccounts.map((remaining) => ({
       pubkey: remaining,
       isSigner: false,
       isWritable: true,
     }));
 
+    const openOrdersAdmin = market.openOrdersAdmin.key.equals(PublicKey.default)
+      ? null
+      : market.openOrdersAdmin.key;
+
     const ix = await this.program.methods
       .placeOrder(args)
       .accounts({
-        signer:
-          openOrdersDelegate != null
-            ? openOrdersDelegate.publicKey
-            : this.walletPk,
+        signer: openOrdersDelegate?.publicKey ?? this.walletPk,
         asks: market.asks,
         bids: market.bids,
         marketVault,
@@ -672,8 +637,9 @@ export class OpenBookV2Client {
     remainingAccounts: PublicKey[],
     openOrdersDelegate?: Keypair,
   ): Promise<[TransactionInstruction, Signer[]]> {
-    const marketVault =
-      args.side === Side.Bid ? market.marketQuoteVault : market.marketBaseVault;
+    const marketVault = args.side.bid
+      ? market.marketQuoteVault
+      : market.marketBaseVault;
     const accountsMeta: AccountMeta[] = remainingAccounts.map((remaining) => ({
       pubkey: remaining,
       isSigner: false,
@@ -766,7 +732,7 @@ export class OpenBookV2Client {
     orderType: PlaceOrderType,
     bids: PlaceMultipleOrdersArgs[],
     asks: PlaceMultipleOrdersArgs[],
-    limit: number = 12,
+    limit = 12,
     openOrdersDelegate?: Keypair,
   ): Promise<[TransactionInstruction, Signer[]]> {
     const ix = await this.program.methods
@@ -798,7 +764,50 @@ export class OpenBookV2Client {
     return [ix, signers];
   }
 
-  public async cancelOrderById(
+  // Use OrderType from './utils/utils' for orderType
+  public async placeOrdersIx(
+    openOrdersPublicKey: PublicKey,
+    marketPublicKey: PublicKey,
+    market: MarketAccount,
+    userBaseAccount: PublicKey,
+    userQuoteAccount: PublicKey,
+    openOrdersAdmin: PublicKey | null,
+    orderType: PlaceOrderType,
+    bids: PlaceMultipleOrdersArgs[],
+    asks: PlaceMultipleOrdersArgs[],
+    limit = 12,
+    openOrdersDelegate?: Keypair,
+  ): Promise<[TransactionInstruction, Signer[]]> {
+    const ix = await this.program.methods
+      .placeOrders(orderType, bids, asks, limit)
+      .accounts({
+        signer:
+          openOrdersDelegate != null
+            ? openOrdersDelegate.publicKey
+            : this.walletPk,
+        asks: market.asks,
+        bids: market.bids,
+        marketQuoteVault: market.marketQuoteVault,
+        marketBaseVault: market.marketBaseVault,
+        eventHeap: market.eventHeap,
+        market: marketPublicKey,
+        openOrdersAccount: openOrdersPublicKey,
+        oracleA: market.oracleA.key,
+        oracleB: market.oracleB.key,
+        userBaseAccount,
+        userQuoteAccount,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        openOrdersAdmin,
+      })
+      .instruction();
+    const signers: Signer[] = [];
+    if (openOrdersDelegate != null) {
+      signers.push(openOrdersDelegate);
+    }
+    return [ix, signers];
+  }
+
+  public async cancelOrderByIdIx(
     openOrdersPublicKey: PublicKey,
     openOrdersAccount: OpenOrdersAccount,
     market: MarketAccount,
@@ -822,7 +831,7 @@ export class OpenBookV2Client {
     return [ix, signers];
   }
 
-  public async cancelOrderByClientId(
+  public async cancelOrderByClientIdIx(
     openOrdersPublicKey: PublicKey,
     openOrdersAccount: OpenOrdersAccount,
     market: MarketAccount,
@@ -831,6 +840,31 @@ export class OpenBookV2Client {
   ): Promise<[TransactionInstruction, Signer[]]> {
     const ix = await this.program.methods
       .cancelOrderByClientOrderId(clientOrderId)
+      .accounts({
+        signer: openOrdersAccount.owner,
+        asks: market.asks,
+        bids: market.bids,
+        market: openOrdersAccount.market,
+        openOrdersAccount: openOrdersPublicKey,
+      })
+      .instruction();
+    const signers: Signer[] = [];
+    if (openOrdersDelegate != null) {
+      signers.push(openOrdersDelegate);
+    }
+    return [ix, signers];
+  }
+
+  public async cancelAllOrdersIx(
+    openOrdersPublicKey: PublicKey,
+    openOrdersAccount: OpenOrdersAccount,
+    market: MarketAccount,
+    limit: number,
+    side: Side | null,
+    openOrdersDelegate?: Keypair,
+  ): Promise<[TransactionInstruction, Signer[]]> {
+    const ix = await this.program.methods
+      .cancelAllOrders(side, limit)
       .accounts({
         signer: openOrdersAccount.owner,
         asks: market.asks,
@@ -883,7 +917,7 @@ export class OpenBookV2Client {
     userBaseAccount: PublicKey,
     userQuoteAccount: PublicKey,
     referrerAccount: PublicKey | null,
-    penaltyPayer: PublicKey | null,
+    penaltyPayer: PublicKey,
     openOrdersDelegate?: Keypair,
   ): Promise<[TransactionInstruction, Signer[]]> {
     const ix = await this.program.methods
@@ -900,7 +934,7 @@ export class OpenBookV2Client {
         userBaseAccount: userBaseAccount,
         userQuoteAccount: userQuoteAccount,
         referrerAccount: referrerAccount,
-        penaltyPayer: penaltyPayer ?? PublicKey.default,
+        penaltyPayer: penaltyPayer,
       })
       .instruction();
 
@@ -912,10 +946,8 @@ export class OpenBookV2Client {
   }
 
   public async closeOpenOrdersAccountIx(
-    payer: Keypair,
-    owner: Keypair = payer,
+    owner: Keypair,
     openOrdersPublicKey: PublicKey,
-    market: MarketAccount,
     solDestination: PublicKey = this.walletPk,
     openOrdersIndexer?: PublicKey,
   ): Promise<[TransactionInstruction, Signer[]]> {
@@ -926,7 +958,6 @@ export class OpenBookV2Client {
       const ix = await this.program.methods
         .closeOpenOrdersAccount()
         .accounts({
-          payer: payer.publicKey,
           owner: owner.publicKey,
           openOrdersIndexer,
           openOrdersAccount: openOrdersPublicKey,
@@ -934,8 +965,8 @@ export class OpenBookV2Client {
           systemProgram: SystemProgram.programId,
         })
         .instruction();
-      const additionalSigners = [payer];
-      if (owner !== payer) {
+      const additionalSigners: Keypair[] = [];
+      if (owner.publicKey !== this.walletPk) {
         additionalSigners.push(owner);
       }
       return [ix, additionalSigners];

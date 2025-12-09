@@ -44,6 +44,25 @@ pub async fn send_tx<CI: ClientInstruction>(
     Ok(accounts)
 }
 
+pub async fn send_tx_and_get_ix_custom_error<CI: ClientInstruction>(
+    solana: &SolanaCookie,
+    ix: CI,
+) -> Option<u32> {
+    let tx_result = send_tx(solana, ix).await;
+
+    if let Err(TransportError::TransactionError(
+        solana_sdk::transaction::TransactionError::InstructionError(
+            _,
+            solana_sdk::instruction::InstructionError::Custom(err_num),
+        ),
+    )) = tx_result
+    {
+        Some(err_num)
+    } else {
+        None
+    }
+}
+
 /// Build a transaction from multiple instructions
 pub struct ClientTransaction {
     solana: Arc<SolanaCookie>,
@@ -229,7 +248,6 @@ pub struct CloseOpenOrdersAccountInstruction {
     pub account_num: u32,
     pub market: Pubkey,
     pub owner: TestKeypair,
-    pub payer: TestKeypair,
     pub sol_destination: Pubkey,
 }
 #[async_trait::async_trait(?Send)]
@@ -261,7 +279,6 @@ impl ClientInstruction for CloseOpenOrdersAccountInstruction {
 
         let accounts = openbook_v2::accounts::CloseOpenOrdersAccount {
             owner: self.owner.pubkey(),
-            payer: self.payer.pubkey(),
             open_orders_indexer,
             open_orders_account,
             sol_destination: self.sol_destination,
@@ -273,7 +290,7 @@ impl ClientInstruction for CloseOpenOrdersAccountInstruction {
     }
 
     fn signers(&self) -> Vec<TestKeypair> {
-        vec![self.owner, self.payer]
+        vec![self.owner]
     }
 }
 
@@ -1191,7 +1208,7 @@ impl ClientInstruction for PruneOrdersInstruction {
         account_loader: impl ClientAccountLoader + 'async_trait,
     ) -> (Self::Accounts, instruction::Instruction) {
         let program_id = openbook_v2::id();
-        let instruction = Self::Instruction { limit: 5 };
+        let instruction = Self::Instruction { limit: 255 };
         let market: Market = account_loader.load(&self.market).await.unwrap();
 
         let accounts = Self::Accounts {

@@ -15,7 +15,7 @@ pub fn settle_funds_expired<'info>(
 
     crate::instructions::settle_funds(Context::new(
         ctx.program_id,
-        &mut ctx.accounts.to_settle_funds_accounts(),
+        &mut ctx.accounts.to_settle_funds(),
         ctx.remaining_accounts,
         SettleFundsBumps {},
     ))
